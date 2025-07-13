@@ -1,0 +1,47 @@
+{
+  "name": "IncrementalLoadPipeline",
+  "properties": {
+    "activities": [
+      {
+        "name": "LookupLastLoadTimestamp",
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT MAX(LastModifiedDate) AS LastLoadTimestamp FROM TargetTable"
+          },
+          "dataset": {
+            "referenceName": "TargetDataset",
+            "type": "DatasetReference"
+          }
+        }
+      },
+      {
+        "name": "CopyNewData",
+        "type": "Copy",
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT * FROM SourceTable WHERE LastModifiedDate > @{activity('LookupLastLoadTimestamp').output.firstRow.LastLoadTimestamp}"
+          },
+          "sink": {
+            "type": "AzureBlobStorage",
+            "copyBehavior": "PreserveHierarchy"
+          },
+          "inputs": [
+            {
+              "referenceName": "SourceDataset",
+              "type": "DatasetReference"
+            }
+          ],
+          "outputs": [
+            {
+              "referenceName": "TargetDataset",
+              "type": "DatasetReference"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "LastSaturdayPipeline",
+  "properties": {
+    "activities": [
+      {
+        "name": "GetCurrentDate",
+        "type": "GetMetadata",
+        "typeProperties": {
+          "dataset": {
+            "referenceName": "CurrentDateDataset",
+            "type": "DatasetReference"
+          },
+          "fieldList": ["currentDate"]
+        }
+      },
+      {
+        "name": "CheckIfSaturday",
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@equals(dayOfWeek(activity('GetCurrentDate').output.currentDate), 6)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "CopyDataFromSourceToDestination",
+              "type": "Copy",
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": "SELECT * FROM SourceTable WHERE LastModifiedDate > @lastRunDate"
+                },
+                "sink": {
+                  "type": "AzureSqlSink",
+                  "preCopyScript": "DELETE FROM DestinationTable WHERE LastModifiedDate < @lastRunDate"
+                },
+                "inputs": [
+                  {
+                    "referenceName": "SourceDataset",
+                    "type": "DatasetReference"
+                  }
+                ],
+                "outputs": [
+                  {
+                    "referenceName": "DestinationDataset",
+                    "type": "DatasetReference"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

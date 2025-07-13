@@ -1,0 +1,134 @@
+{
+  "name": "ResilientDataRetrievalPipeline",
+  "properties": {
+    "activities": [
+      {
+        "name": "GetDataWithRetry",
+        "type": "Until",
+        "typeProperties": {
+          "expression": {
+            "value": "@or(equals(activity('CopyData').output.status, 'Succeeded'), greaterOrEquals(variables('RetryAttempt'), parameters('MaxRetries')))",
+            "type": "Expression"
+          },
+          "timeout": "PT1H",
+          "activities": [
+            {
+              "name": "CopyData",
+              "type": "Copy",
+              "policy": {
+                "timeout": "PT20M",
+                "retry": 0,
+                "retryIntervalInSeconds": 0
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": "SELECT * FROM SourceTable WHERE LastModified > @{variables('LastSuccessfulRun')}"
+                },
+                "sink": {
+                  "type": "AzureSqlSink",
+                  "writeBatchSize": 10000
+                }
+              },
+              "inputs": [
+                {
+                  "referenceName": "SourceDataset",
+                  "type": "DatasetReference"
+                }
+              ],
+              "outputs": [
+                {
+                  "referenceName": "DestinationDataset",
+                  "type": "DatasetReference"
+                }
+              ]
+            },
+            {
+              "name": "LogFailure",
+              "type": "WebActivity",
+              "dependsOn": [
+                {
+                  "activity": "CopyData",
+                  "dependencyConditions": [
+                    "Failed"
+                  ]
+                }
+              ],
+              "typeProperties": {
+                "url": "https://your-logging-endpoint.com/api/log",
+                "method": "POST",
+                "body": {
+                  "error": "@{activity('CopyData').error.message}",
+                  "attempt": "@{variables('RetryAttempt')}",
+                  "timestamp": "@{utcnow()}"
+                }
+              }
+            },
+            {
+              "name": "IncrementRetryCount",
+              "type": "SetVariable",
+              "dependsOn": [
+                {
+                  "activity": "LogFailure",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "typeProperties": {
+                "variableName": "RetryAttempt",
+                "value": "@add(int(variables('RetryAttempt')), 1)"
+              }
+            },
+            {
+              "name": "WaitBeforeRetry",
+              "type": "Wait",
+              "dependsOn": [
+                {
+                  "activity": "IncrementRetryCount",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "typeProperties": {
+                "waitTimeInSeconds": 5
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "UpdateWatermarkOnSuccess",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "GetDataWithRetry",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "storedProcedureName": "usp_UpdateWatermark",
+          "storedProcedureParameters": {
+            "LastRunTimestamp": {
+              "value": "@{utcnow()}",
+              "type": "DateTime"
+            }
+          }
+        }
+      }
+    ],
+    "variables": {
+      "RetryAttempt": 0,
+      "LastSuccessfulRun": "@{utcnow()}"
+    },
+    "parameters": {
+      "MaxRetries": {
+        "type": "int",
+        "defaultValue": 3
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "IncrementalLoadPipeline",
+  "properties": {
+    "activities": [
+      {
+        "name": "LookupLastProcessedTime",
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT LastProcessedTime FROM WatermarkTable WHERE TableName = 'YourSourceTable'"
+          },
+          "dataset": {
+            "referenceName": "WatermarkDataset",
+            "type": "DatasetReference"
+          }
+        }
+      },
+      {
+        "name": "CopyNewData",
+        "type": "Copy",
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT * FROM YourSourceTable WHERE LastModifiedDate > @{activity('LookupLastProcessedTime').output.firstRow.LastProcessedTime}"
+          },
+          "sink": {
+            "type": "AzureSqlSink"
+          },
+          "inputs": [
+            {
+              "referenceName": "SourceDataset",
+              "type": "DatasetReference"
+            }
+          ],
+          "outputs": [
+            {
+              "referenceName": "DestinationDataset",
+              "type": "DatasetReference"
+            }
+          ]
+        }
+      },
+      {
+        "name": "UpdateWatermark",
+        "type": "SqlServerStoredProcedure",
+        "typeProperties": {
+          "storedProcedureName": "UpdateWatermarkProcedure",
+          "storedProcedureParameters": {
+            "TableName": {
+              "value": "YourSourceTable",
+              "type": "Expression"
+            },
+            "NewProcessedTime": {
+              "value": "@{activity('CopyNewData').output.lastModifiedTime}",
+              "type": "Expression"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
