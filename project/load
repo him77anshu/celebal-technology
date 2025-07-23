@@ -1,0 +1,5 @@
+az storage fs file upload \
+  --account-name mydatalake123 \
+  --file-system datalake-files \
+  --source ./customers.csv \
+  --path raw/customers.csv
